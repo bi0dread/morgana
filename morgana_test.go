@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/bi0dread/morgana"
 	"github.com/stretchr/testify/assert"
-	"morgana"
 )
 
 func TestMorgana(t *testing.T) {

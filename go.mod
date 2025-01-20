@@ -1,4 +1,4 @@
-module morgana
+module github.com/bi0dread/morgana
 
 go 1.23.2
 
