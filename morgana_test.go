@@ -1,8 +1,10 @@
 package morgana_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/bi0dread/morgana"
@@ -32,11 +34,6 @@ func TestMorgana(t *testing.T) {
 		assert.Equal(t, "Test message", m.GetMessage())
 	})
 
-	t.Run("WithInternalDetail", func(t *testing.T) {
-		m = m.WithInternalDetail("Detail1", "Detail2")
-		assert.Equal(t, []any{"Detail1", "Detail2"}, m.GetInternalDetail())
-	})
-
 	t.Run("With", func(t *testing.T) {
 		m = m.With("WithValue")
 		assert.Equal(t, "WithValue", m.GetWith())
@@ -45,7 +42,8 @@ func TestMorgana(t *testing.T) {
 	t.Run("WithError", func(t *testing.T) {
 		err := errors.New("Test error")
 		m = m.WithError(err)
-		assert.Contains(t, m.GetInternalDetail(), "Test error")
+		stack := m.GetMorganaStackErrors()
+		assert.NotEmpty(t, stack)
 	})
 
 	t.Run("WithAddMetaDataKey", func(t *testing.T) {
@@ -80,6 +78,67 @@ func TestMorgana(t *testing.T) {
 		assert.NotEmpty(t, jsonStr)
 	})
 
+	// New features
+	t.Run("FullStackCapture", func(t *testing.T) {
+		mm := morgana.New("Stack").WithFullStack(2, 8)
+		frames := mm.GetStackFrames()
+		assert.NotEmpty(t, frames)
+	})
+
+	t.Run("SafeJSONRedaction", func(t *testing.T) {
+		mm := morgana.New("Secret").WithAddMetaDataKey("token", "abc").WithRedactedKey("token")
+		out := mm.ToJsonSafe()
+		assert.Contains(t, out, "[REDACTED]")
+	})
+
+	t.Run("HTTPWriter", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		mm := morgana.New("Unauthorized").WithStatusCode(http.StatusUnauthorized).WithMessage("nope")
+		mm.WriteHTTP(rec, true)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+		assert.Contains(t, rec.Body.String(), "nope")
+	})
+
+	t.Run("PanicRecover", func(t *testing.T) {
+		err := morgana.Recover(func() { panic("boom") })
+		assert.NotNil(t, err)
+	})
+
+	t.Run("JoinHelper", func(t *testing.T) {
+		err := morgana.Join(errors.New("first"), morgana.New("Second").WithMessage("second").ToError())
+		assert.NotNil(t, err)
+	})
+
+	t.Run("GRPCCodeMapping", func(t *testing.T) {
+		mm := morgana.New("NotFound").WithStatusCode(http.StatusNotFound)
+		code := mm.ToGRPCCode()
+		assert.Equal(t, 5, code) // NotFound
+		mm = mm.FromGRPCCode(3)  // InvalidArgument
+		assert.Equal(t, http.StatusBadRequest, mm.GetStatusCode())
+	})
+
+	t.Run("WithTraceAndFields", func(t *testing.T) {
+		ctx := context.WithValue(context.Background(), "trace_id", "tid-123")
+		mm := morgana.New("Trace").WithTrace(ctx)
+		fields := mm.ToFields()
+		assert.Equal(t, "tid-123", mm.GetMetaData()["trace_id"])
+		assert.NotEmpty(t, fields["id"]) // has correlation id
+	})
+
+	t.Run("WithIDAndFieldErrors", func(t *testing.T) {
+		mm := morgana.New("Val").WithID("id-1").WithFieldError("name", "required", "missing")
+		assert.Equal(t, "id-1", mm.GetID())
+		fes := mm.GetFieldErrors()
+		assert.Equal(t, 1, len(fes))
+		assert.Equal(t, "name", fes[0].Field)
+	})
+
+	t.Run("CauseAndUnwrap", func(t *testing.T) {
+		cause := errors.New("root cause")
+		mm := morgana.New("Cause").WithCause(cause)
+		err := mm.ToError()
+		assert.NotNil(t, err)
+	})
 }
 
 func TestWrap(t *testing.T) {
