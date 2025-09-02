@@ -308,8 +308,8 @@ func (m *morgana) Is(err error) bool {
 
 func New(typeValue string) Morgana {
 	mor := &morgana{Type: typeValue, morganaStackErrors: make([]Morgana, 0), MetaData: make(map[string]any), StackFrames: make([]StackFrame, 0), redactedKeys: make(map[string]struct{}), FieldErrors: make([]FieldError, 0)}
-	mor.WithStackTrace(3)
-	mor.WithFullStack(3, 32)
+	//mor.WithStackTrace(3)
+	//mor.WithFullStack(3, 32)
 	mor.ensureID()
 	return mor
 }
